@@ -25,6 +25,8 @@ Kuudo runs in your own cloud. The Community plan deploys one instance of each Am
 
 Replace `<your-host>` with the hostname of your deployment and the bearer value with your Kuudo API key.
 
+A tool may document a provider credential of its own. That is separate from the bearer above, it belongs to the service the tool calls, and the tool's own entry says so.
+
 ## What this repository is
 
 This repository holds registry metadata and a catalog-only stub. Live execution runs in your Kuudo deployment. The server source is not published. The stub in `src/` answers `tools/list` with the catalog below, serves the same catalog as one resource (`kuudo://catalog/tools.json`), offers one prompt (`connect`) carrying the setup guidance, and returns an error with that guidance on any call, so registries and clients can inspect the surface without any access to Amazon.
@@ -111,7 +113,7 @@ Operator guides grounded in Amazon's own documentation, each with the artifact t
 
 ## Reads, writes, approvals
 
-Read tools are safe to call freely. Write tools do work inside your deployment: they generate media, run a chained query, or hand back an upload URL. Each tool's access is recorded beside it in `tools.json`.
+Read tools are safe to call freely. Write tools do work inside your deployment and never change anything on Amazon. Each tool's access is recorded beside it in `tools.json`.
 
 ## Kuudo
 
