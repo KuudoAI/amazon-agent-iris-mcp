@@ -1,0 +1,736 @@
+{
+  "registryName": "io.github.KuudoAI/amazon-agent-iris-mcp",
+  "version": "1.0.0",
+  "featureUrl": "https://www.kuudo.com/features/amazon-agent-iris/",
+  "connectUrl": "https://<your-host>/mcp",
+  "operationCount": 12,
+  "toolCount": 12,
+  "toolSurfaceNote": "Four of the twelve mirror the MCP resource and prompt methods, and two more are onboarding and server health. The remaining six generate images and video, hand back an upload URL for local source bytes, and track video jobs.",
+  "resources": [
+    {
+      "name": "Amazon Agent Iris",
+      "count": 12
+    }
+  ],
+  "tools": [
+    {
+      "name": "start_here",
+      "description": "Catalog entry. Runs in your Kuudo deployment, not here. Call this FIRST to understand how to use this image and video generation server. Returns workflow documentation for: - Available tools - HTTP image uploads - Editing photos - Long-running, resumable video generation - Generating new images - Downloading results",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "access": "read",
+      "resource": "Amazon Agent Iris",
+      "operations": 1
+    },
+    {
+      "name": "generate_image",
+      "description": "Catalog entry. Runs in your Kuudo deployment, not here. Generate or edit images with **Google Gemini** (Nano Banana) from natural language instructions. For OpenAI gpt-image-2, use the sibling `generate_openai_image` tool. For **Amazon / Seller Central** listing images, FIRST read the `skill://amazon-product-image/SKILL.md` resource (via `read_resource`) for the marketplace image-compliance rules, then generate/audit against them. ## CHARACTER CONSISTENCY Use public image handles for character-consistent image generation: ``` generate_image( input_images=[\"agent-iris://images/img_12\"], mode=\"generate\", prompt=\"PRESERVE EXACTLY: character's facial features. NEW: Professional headshot...\", model=\"gemini-3-pro-image\" ) ``` Explicit generate mode uses the image handle as conditioning rather than an edit source. ## EDITING AN EXISTING IMAGE For local bytes, upload with POST /images first, then pass the returned handle. For a public hosted image, pass the HTTPS URL directly: ``` generate_image( input_images=[\"https://example.com/source.jpg\"], mode=\"edit\", prompt=\"Change the background to a beach sunset\" ) ``` ## ITERATING ON A RESULT (high-fidelity chained edit) — PREFERRED Every generate/edit response returns an `interaction_id`. Pass it back to refine the SAME image while preserving the rest of the composition — no need to re-send the source. This beats re-editing from bytes for edit fidelity: ``` generate_image( interaction_id=\"v1_Chd...\", # from the previous response prompt=\"Recolor the mug to beige. Change nothing else.\" ) ``` TTL: ~55 days (paid) / 1 day (free). ## COMPOSITING (Person from image A into scene B) Use multiple references with generate mode: ``` generate_image( input_images=[\"agent-iris://images/img_12\", \"gemini://files/beachRef\"], mode=\"generate\", prompt=\"Place character from image 1 into the beach scene from image 2...\" ) ``` ## OPERATION PRESETS Use operation=\"icon\", \"pattern\", \"diagram\", \"storyboard\", or \"photo_repair\" for strict defaults around model, aspect ratio, and prompt framing. ## Mode Auto-Detection: - interaction_id → EDIT mode - operation=\"photo_repair\" → EDIT mode - operation=\"icon\"/\"pattern\"/\"diagram\"/\"storyboard\" → GENERATE mode - operation=\"general\" with one input image → EDIT mode - Multiple input images or pure prompt → GENERATE mode Returns both MCP image content blocks and structured JSON with metadata.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "description": "Clear, detailed image prompt. Include subject, composition, action, location, style, and any text to render. Add 'Square image' or '16:9' in the text to influence aspect ratio.",
+            "maxLength": 8192,
+            "minLength": 1,
+            "type": "string"
+          },
+          "n": {
+            "default": 1,
+            "description": "Requested image count (model may return fewer).",
+            "maximum": 14,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "negative_prompt": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Things to avoid (style, objects, text)."
+          },
+          "system_instruction": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional system tone/style guidance."
+          },
+          "input_images": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Images for editing or conditioning. Accepts agent-iris://images/{image_id}, gemini://files/{name}, and http(s) image URLs. Hosted URLs are fetched server-side inside this authenticated tool call; upload local bytes with POST /images when a durable server handle is needed."
+          },
+          "operation": {
+            "default": "general",
+            "description": "Strict operation preset: general, icon, pattern, diagram, storyboard, or photo_repair.",
+            "enum": [
+              "general",
+              "icon",
+              "pattern",
+              "diagram",
+              "storyboard",
+              "photo_repair"
+            ],
+            "type": "string"
+          },
+          "interaction_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Interactions API id from a PRIOR generate/edit call (e.g., 'v1_Chd...'). PREFERRED way to iterate on an image: pass it to chain a high-fidelity edit that preserves the rest of the composition (no need to re-send the source image). Implies edit mode. TTL ~55 days (paid) / 1 day (free)."
+          },
+          "mode": {
+            "default": "auto",
+            "description": "Operation mode: 'auto' (default), 'generate', or 'edit'. AUTO BEHAVIOR: interaction_id or photo_repair → edit mode; generation presets → generate mode; one general input image → edit mode. USE 'generate' FOR: Creating new images with character reference, style transfer, conditioning. USE 'edit' FOR: Modifying a specific existing image (change background, outfit, add text). You can override auto-detection by explicitly setting mode='generate' or mode='edit'.",
+            "enum": [
+              "auto",
+              "generate",
+              "edit"
+            ],
+            "type": "string"
+          },
+          "aspect_ratio": {
+            "anyOf": [
+              {
+                "enum": [
+                  "1:1",
+                  "2:3",
+                  "3:2",
+                  "3:4",
+                  "4:3",
+                  "4:5",
+                  "5:4",
+                  "9:16",
+                  "16:9",
+                  "21:9",
+                  "1:4",
+                  "4:1",
+                  "1:8",
+                  "8:1"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional output aspect ratio. Standard: 1:1 (square), 3:4, 4:3, 2:3, 3:2, 4:5, 5:4, 9:16 (portrait), 16:9 (landscape), 21:9 (ultra-wide). New in Nano Banana 2: 1:4 (tall strip), 4:1 (wide banner), 1:8 (ultra-tall), 8:1 (ultra-wide)."
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "enum": [
+                  "0.5K",
+                  "1K",
+                  "2K",
+                  "4K"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional resolution. gemini-3.1-flash-image supports 0.5K, 1K, 2K, and 4K. gemini-3-pro-image supports 1K, 2K, and 4K. gemini-2.5-flash-image supports 1K only."
+          },
+          "thinking_level": {
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "high"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional thinking level for Gemini 3 image models. Allowed values: low or high. Use high for complex compositions, text-heavy images, or unusual prompts. Leave unset for the model default."
+          },
+          "use_grounding": {
+            "default": false,
+            "description": "Enable Google Search grounding for real-time data retrieval before generation. REQUIRED for infographics, charts, current events, statistics, or any real-world data. IMPORTANT: Grounding works with 'gemini-3.1-flash-image' (default) and 'gemini-3-pro-image'. Default: False.",
+            "type": "boolean"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "enum": [
+                  "gemini-3.1-flash-image",
+                  "gemini-3-pro-image",
+                  "gemini-2.5-flash-image",
+                  "gemini-3.1-flash-image-preview",
+                  "gemini-3-pro-image-preview",
+                  "gemini-2.5-flash-image-preview"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Model selection. gemini-3.1-flash-image: Nano Banana 2 (DEFAULT), supports grounding, 14 aspect ratios, and 0.5K-4K output. gemini-3-pro-image: Nano Banana Pro, professional asset production, grounding, 14 total references, 1K-4K output. gemini-2.5-flash-image: Original Nano Banana — fast drafts ($0.039/image), no grounding support. Legacy -preview aliases are accepted and normalized to current model IDs."
+          },
+          "output_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional base name for output file(s). If provided, files will be named '<output_name>.png' (or '<output_name>_1.png', '<output_name>_2.png' for multiple images). Use descriptive names like 'brand-linkedin-headshot' or 'product-hero-banner'. If not provided, defaults to timestamped names like 'gen_20251217_120000_1_1_abc123.png'."
+          },
+          "include_preview": {
+            "default": false,
+            "description": "Whether to ALSO embed the inline base64 thumbnail preview block(s). Default false (link-first): the response is the text summary + signed download URLs (including a signed thumbnail URL) + structured metadata, with no base64 — saving context tokens. Set true to additionally embed the inline thumbnail for a quick interactive visual check on a single image. Thumbnails are always stored server-side and reachable via the signed thumbnail URL regardless of this flag.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "additionalProperties": false
+      },
+      "access": "write",
+      "resource": "Amazon Agent Iris",
+      "operations": 1
+    },
+    {
+      "name": "generate_openai_image",
+      "description": "Catalog entry. Runs in your Kuudo deployment, not here. Generate images with **OpenAI gpt-image-2** via the Responses API. The additive OpenAI provider, sibling to `generate_image` (Google Gemini). Send your OpenAI key as `Authorization: Bearer <key>` — the tool name implies the provider. Iterate on a result with `previous_response_id` (OpenAI's analog of Gemini's `interaction_id`).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "description": "Image prompt for OpenAI gpt-image-2 via the Responses API. Describe subject, composition, style, and any text to render.",
+            "maxLength": 8192,
+            "minLength": 1,
+            "type": "string"
+          },
+          "n": {
+            "default": 1,
+            "description": "Number of images. Implemented as N server-side calls (the OpenAI image tool has no native count).",
+            "maximum": 10,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "input_images": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Reference/edit images. Accepts agent-iris://images/{id} handles, http(s) URLs (including signed server URLs), and data: URLs — all resolved to base64 data URLs server-side before the OpenAI call."
+          },
+          "size": {
+            "default": "auto",
+            "description": "'auto' or a 'WIDTHxHEIGHT' string. gpt-image-2 takes flexible sizes: both edges multiples of 16, aspect 1:3-3:1, max 3840x2160.",
+            "type": "string"
+          },
+          "quality": {
+            "default": "auto",
+            "description": "Render quality.",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "auto"
+            ],
+            "type": "string"
+          },
+          "background": {
+            "default": "auto",
+            "description": "Background. gpt-image-2 does not support 'transparent'.",
+            "enum": [
+              "opaque",
+              "auto"
+            ],
+            "type": "string"
+          },
+          "output_format": {
+            "default": "png",
+            "description": "Output image format.",
+            "enum": [
+              "png",
+              "jpeg",
+              "webp"
+            ],
+            "type": "string"
+          },
+          "output_compression": {
+            "anyOf": [
+              {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Compression 0-100 (jpeg/webp only)."
+          },
+          "moderation": {
+            "default": "auto",
+            "description": "Moderation strictness.",
+            "enum": [
+              "auto",
+              "low"
+            ],
+            "type": "string"
+          },
+          "previous_response_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "A prior generate_openai_image response id to iterate on (the OpenAI analog of Gemini's interaction_id). Chains a follow-up edit."
+          },
+          "system_instruction": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional system tone/style guidance."
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "additionalProperties": false
+      },
+      "access": "write",
+      "resource": "Amazon Agent Iris",
+      "operations": 1
+    },
+    {
+      "name": "create_upload_url",
+      "description": "Catalog entry. Runs in your Kuudo deployment, not here. Create the expiring signed URL needed to upload LOCAL image bytes. Use this when you have an image on disk (or raw bytes) to feed into generate_image: call this tool, then HTTP ``POST`` the bytes to the returned ``upload_url`` (no auth header needed — the URL's signed token authorizes it). The upload responds with a ``agent-iris://images/{id}`` handle to pass in generate_image's ``input_images``. Hosted http(s) image URLs do NOT need this — pass them to generate_image directly.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "access": "write",
+      "resource": "Amazon Agent Iris",
+      "operations": 1
+    },
+    {
+      "name": "server_status",
+      "description": "Catalog entry. Runs in your Kuudo deployment, not here. Return server diagnostics for auth, models, storage, uploads, resources, and health.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "access": "read",
+      "resource": "Amazon Agent Iris",
+      "operations": 1
+    },
+    {
+      "name": "generate_video",
+      "description": "Catalog entry. Runs in your Kuudo deployment, not here. Generate video with **Google Veo 3.1** from text, a first image, first/last frames, up to three reference images, or a Veo-generated video to extend. Inputs are bounded handles or http(s) URLs, never inline data; references, extensions, and 1080p/4k output require an 8-second request. Before planning or generating video, read the canonical `skill://amazon-video/SKILL.md` resource. It covers mode and model selection, prompt craft, recovery, and the additional compliance workflow for Amazon listing videos. Renders take 11 s to several minutes. Task-capable clients run this in the background; other clients receive `pending` and resume with `get_video_status(recovery_id)`. Reuse the same `recovery_id` after a timeout. If submission is reported as unknown, do not retry under a new id because Google may already have accepted the billed request. Results are signed download URLs and `agent-iris://videos/vid_N` handles.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "anyOf": [
+              {
+                "maxLength": 8192,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "What to generate. Required for text and reference modes; optional when animating an image, interpolating between frames, or extending a video."
+          },
+          "model": {
+            "anyOf": [
+              {
+                "enum": [
+                  "veo-3.1-generate-preview",
+                  "veo-3.1-fast-generate-preview",
+                  "veo-3.1-lite-generate-preview"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "veo-3.1-generate-preview (default), -fast-, or -lite-."
+          },
+          "image": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "pattern": "^(agent-iris://images/img_[1-9][0-9]*|gemini://files/[A-Za-z0-9._-]+|https?://[^\\s]+)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "First frame: agent-iris://images/img_N, a catalog-known gemini://files/{name}, or an http(s) URL. No data URLs."
+          },
+          "last_frame": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "pattern": "^(agent-iris://images/img_[1-9][0-9]*|gemini://files/[A-Za-z0-9._-]+|https?://[^\\s]+)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Last frame (interpolation); requires image."
+          },
+          "reference_images": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 2048,
+                  "pattern": "^(agent-iris://images/img_[1-9][0-9]*|gemini://files/[A-Za-z0-9._-]+|https?://[^\\s]+)$",
+                  "type": "string"
+                },
+                "maxItems": 3,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Up to 3 asset reference images (not on Lite; forces 8 s)."
+          },
+          "video": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "pattern": "^agent-iris://videos/vid_[1-9][0-9]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "agent-iris://videos/vid_N to extend by 7 s (Veo 3.1 / Fast only; 720p; up to 20 times; source must be recent)."
+          },
+          "aspect_ratio": {
+            "default": "16:9",
+            "description": "16:9 or 9:16.",
+            "enum": [
+              "16:9",
+              "9:16"
+            ],
+            "type": "string"
+          },
+          "duration_seconds": {
+            "default": 8,
+            "description": "4, 6, or 8. 1080p / 4k / references / extension require 8.",
+            "enum": [
+              4,
+              6,
+              8
+            ],
+            "type": "integer"
+          },
+          "resolution": {
+            "default": "720p",
+            "description": "720p, 1080p, or 4k (not on Lite).",
+            "enum": [
+              "720p",
+              "1080p",
+              "4k"
+            ],
+            "type": "string"
+          },
+          "negative_prompt": {
+            "anyOf": [
+              {
+                "maxLength": 8192,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "What to avoid. Supported only by the standard Veo 3.1 model."
+          },
+          "person_generation": {
+            "anyOf": [
+              {
+                "enum": [
+                  "allow_all",
+                  "allow_adult"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "allow_all (text / extend) or allow_adult (image-driven modes). Omit to use the only legal value for the mode."
+          },
+          "enhance_prompt": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Google SDK prompt rewriting control for the standard Veo 3.1 model. Fast and Lite accept only omitted/false."
+          },
+          "recovery_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{7,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional idempotency / resume key (8-64 chars). Defaults to task_<task_id> when run as a background task. Reuse it with get_video_status."
+          }
+        },
+        "additionalProperties": false
+      },
+      "access": "write",
+      "resource": "Amazon Agent Iris",
+      "operations": 1
+    },
+    {
+      "name": "get_video_status",
+      "description": "Catalog entry. Runs in your Kuudo deployment, not here. Probe one video operation (exactly one of `recovery_id` / `operation_name`). Makes at most one Google status call and never waits for rendering. When the render is finished it downloads and stores the video in this call. Owner-scoped: only the key that submitted the operation can see it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "recovery_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{7,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The recovery_id echoed by generate_video."
+          },
+          "operation_name": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Alternatively, the Google operation name."
+          },
+          "retry_collection": {
+            "default": false,
+            "description": "Retry a backed-off collection now instead of waiting.",
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "access": "read",
+      "resource": "Amazon Agent Iris",
+      "operations": 1
+    },
+    {
+      "name": "list_video_operations",
+      "description": "Catalog entry. Runs in your Kuudo deployment, not here. List the video operations submitted with this key, newest first. Reads only the local operation store — no Google call. Use a listed `recovery_id` with `get_video_status` to resume or collect.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "default": 20,
+            "description": "Page size (1-100).",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "submitting",
+                  "submission_unknown",
+                  "started",
+                  "completed",
+                  "failed",
+                  "purged"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only operations in this stored status (default: every status)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "access": "read",
+      "resource": "Amazon Agent Iris",
+      "operations": 1
+    },
+    {
+      "name": "list_resources",
+      "description": "Catalog entry. Runs in your Kuudo deployment, not here. List all available resources and resource templates. Returns JSON with resource metadata. Static resources have a 'uri' field, while templates have a 'uri_template' field with placeholders like {name}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "access": "read",
+      "resource": "Amazon Agent Iris",
+      "operations": 1
+    },
+    {
+      "name": "read_resource",
+      "description": "Catalog entry. Runs in your Kuudo deployment, not here. Read a resource by its URI. For static resources, provide the exact URI. For templated resources, provide the URI with template parameters filled in. Returns the resource content as a string. Binary content is base64-encoded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "uri": {
+            "description": "The URI of the resource to read",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uri"
+        ],
+        "additionalProperties": false
+      },
+      "access": "read",
+      "resource": "Amazon Agent Iris",
+      "operations": 1
+    },
+    {
+      "name": "list_prompts",
+      "description": "Catalog entry. Runs in your Kuudo deployment, not here. List all available prompts. Returns JSON with prompt metadata including name, description, and optional arguments.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "access": "read",
+      "resource": "Amazon Agent Iris",
+      "operations": 1
+    },
+    {
+      "name": "get_prompt",
+      "description": "Catalog entry. Runs in your Kuudo deployment, not here. Get a prompt by name with optional arguments. Returns the rendered prompt as JSON with a messages array. Arguments should be provided as a dict mapping argument names to values.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "The name of the prompt to get",
+            "type": "string"
+          },
+          "arguments": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional arguments for the prompt"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "access": "read",
+      "resource": "Amazon Agent Iris",
+      "operations": 1
+    }
+  ]
+}
